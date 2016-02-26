@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<title>dodgy | a challenging game for nice internet people</title>
+	<meta name="viewport" content="width=device-width,scale=1.0,user-scalable=false">
+	<link href='https://fonts.googleapis.com/css?family=Nova+Mono' rel='stylesheet' type='text/css'>
+	<style>
+		html,
+		body {
+			margin: 0;
+			padding: 0;
+			background-color: #1C344F;
+			font-family: 'Nova Mono', monospace, sans-serif;
+			color: white;
+		}
+		h1 {
+			margin: 10px 0 10px 10px;
+			font-size: 50px;
+		}
+		p {
+			margin: 10px 0 0 10px;
+			font-size: 14px;
+			max-width: 400px;
+		}
+		hr {
+			display: block;
+		    height: 1px;
+		    border: 0;
+		    border-top: 3px solid #B341B9;
+		    margin: 1em 0;
+		    padding: 0; 
+		}
+		a,
+		a:visited,
+		a:active {
+			color: white;
+			text-decoration: none;
+		}
+		a:hover {
+			text-decoration: underline;
+		}
+		.float {
+			float: right;
+			margin-right: 10px;
+		}
+		.float h1 {
+			font-size: 60px;
+		}
+	</style>
+	<script src="nosleep.js"></script>
+</head>
+<body>
+	<script>(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)})(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+	ga('create', 'UA-46645531-1', 'colejackowski.com');
+  	ga('send', 'pageview');
+	</script>
+
+	<canvas id="canvas"></canvas>
+
+	<div id="div">
+		<h1>dodgy</h1>
+		<p>
+			a challenging game for nice internet people.
+		</p>
+		<hr>
+		<br><br>
+		<p>
+			i made this game for you because i like you and i want you to have fun. i also made it for me because i love to play arcade-style high score games. i hope you like it.
+		</p>
+		<p>
+			dodge the green-blue squares. they're mines. pick up the violet-ish squares; they charge your bombs. when you fill an entire violet square at the bottom left of the screen, you can detonate a bomb to clear all the mines out of your way for a while. the points you get from passing mines and picking up charges are recorded in the white bar at the top of the screen. when it's full, you get an extra life.
+		</p>
+		<p>
+			if you're on a phone or tablet, keep it in portrait mode. landscape mode is just asking for trouble.
+		</p>
+		<p>
+			i get that it's a little hard at first. you'll figure it out.
+		</p>
+		<p>
+			<a href="mailto:colejackowski@gmail.com">complaints &rarr;</a>
+		</p>
+		<p>
+			<a href="https://twitter.com/cjtypewriters">me &rarr;</a>
+		</p>
+		<p>
+			<a href="http://boingboing.net/2015/03/16/punk-games.html">you can make games, too &rarr;</a>
+		</p>
+		<br><br>
+	</div>
+
+	<script>
+
+var canvas,
+	ctx;
+var unit;
+var keysDown = [];
+var ios = false;
+var vibrate = false;
+var now,
+	then;
+var paused = false;
+var hero = {};
+var rocks = [];
+var charge = {};
+var exploding = false,
+	explosionRadius;
+var gameOver = false;
+var highScore;	
+var keyboard = false;
+var tilt = false;
+var betaMod,
+	gammaMod;
+var rockColor = '#20604A';
+var chargeColor = '#B341B9';
+var heroColor = 'white';
+var bgColor = '#031118'; // '#05040B';
+
+function Rock(x, y, size, speed) {
+	this.x = x;
+	this.y = y;
+	this.size = size;
+	this.speed = speed;
+	// just send a rock back when it crosses the bottom of the screen
+	this.replace = function() {
+		this.y = Math.floor(Math.random() * -canvas.height);
+	}
+	// regenerate a rock after an explosion and give it more distance
+	this.regenerate = function() {
+		this.y = Math.floor(Math.random() * -canvas.height - (canvas.height * 2));
+		this.speed = Math.floor(Math.random() * (3 * unit) + (1 * unit));
+	}
+}
+
+window.addEventListener('load', function() {
+	// stupid user agent thing for ios
+	ios = (navigator.userAgent.match(/iPad/i) != null) || (navigator.userAgent.match(/iPhone/i) != null) || (navigator.userAgent.match(/iPod/i) != null);
+
+	// detect vibration
+	if (window.navigator.vibrate) {
+		vibrate = true;
+	}
+
+	// nosleep
+	var noSleep = new NoSleep();
+	noSleep.enable();
+
+	// set up canvas
+	canvas = document.getElementById('canvas');
+	ctx = canvas.getContext('2d');
+	if (window.innerWidth > window.innerHeight) {
+		canvas.width = canvas.height = window.innerHeight;
+		document.getElementById('div').classList.add('float');
+	} else {
+		canvas.width = canvas.height = window.innerWidth;
+	}
+	unit = canvas.width / 100;
+	ctx.font = (5 * unit) + 'px nova mono';
+	ctx.fillStyle = bgColor;
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+	// choose controls
+	ctx.fillStyle = rockColor;
+	ctx.fillRect(32 * unit, 15 * unit, 20 * unit, 20 * unit);
+	ctx.fillStyle = chargeColor;
+	ctx.fillRect(47 * unit, 20 * unit, 17 * unit, 17 * unit);
+	ctx.fillStyle = heroColor;
+	ctx.fillRect(42 * unit, 32 * unit, 14 * unit, 14 * unit);
+	ctx.fillText('hit k for keyboard controls', unit * 8, unit * 70);
+	ctx.fillText('touch anywhere for tilt controls', unit * 8, unit * 80);
+	window.addEventListener('keydown', keyboardInstructions);
+	canvas.addEventListener('click', tiltInstructions);
+	if (ios) {
+		canvas.addEventListener('touchstart', tiltInstructions);
+	}
+});
+
+function generalInstructions() {
+	ctx.fillStyle = rockColor;
+	ctx.fillRect(unit * 10, unit * 20, unit * 8, unit * 8);
+	ctx.fillStyle = chargeColor;
+	ctx.fillRect(unit * 10, unit * 35, unit * 8, unit * 8);
+
+	ctx.fillStyle = heroColor;
+	ctx.fillText('avoid mines', unit * 20, unit * 25);
+	ctx.fillText('pick up charges', unit * 20, unit * 40);
+}
+
+function keyboardInstructions(e) {
+	if (e.keyCode == 75) {
+		ctx.fillStyle = bgColor;
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		generalInstructions();
+		ctx.fillStyle = heroColor;
+		ctx.fillText('use WASD keys to move', unit * 10, unit * 60);
+		ctx.fillText('hit enter to detonate bombs', unit * 10, unit * 70);
+		ctx.fillText('hit k again to start', unit * 10, unit * 90);
+		window.removeEventListener('keydown', keyboardInstructions);
+		canvas.removeEventListener('click', tiltInstructions);
+		if (ios) {
+			canvas.removeEventListener('touchstart', tiltInstructions);
+		}
+
+		window.addEventListener('keydown', startKeyboard);
+	}
+}
+
+function tiltInstructions() {
+	ctx.fillStyle = bgColor;
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+	generalInstructions();
+	ctx.fillStyle = heroColor;
+	ctx.fillText('tilt device to move', unit * 10, unit * 60);
+	ctx.fillText('touch anywhere to detonate bombs', unit * 10, unit * 70);
+	ctx.fillText('touch screen again to start', unit * 10, unit * 90);
+	window.removeEventListener('keydown', keyboardInstructions);
+	canvas.removeEventListener('click', tiltInstructions);
+	if (ios) {
+		canvas.removeEventListener('touchstart', tiltInstructions);
+	}
+
+	canvas.addEventListener('click', startTilt);
+	if (ios) {
+		canvas.addEventListener('touchstart', startTilt);
+	}
+}
+
+function startKeyboard(e) {
+	if (e.keyCode == 75) {
+		window.removeEventListener('keydown', startKeyboard);
+
+		window.addEventListener('keydown', function(e) {
+		    var key = e.keyCode;
+		    for (var i = 0; i < keysDown.length; i++) {
+		      if (key == keysDown[i]) return 0;
+		 	}
+		    keysDown.push(key);
+		    if (key == 32 && paused) {
+		    	for (var i = 0; i < keysDown.length; i++) {
+		      		if (key == keysDown[i]) keysDown.splice(i, 1);
+		    	}
+		    	paused = false;
+		    }
+		});
+		window.addEventListener('keyup', function(e) {
+		    var key = e.keyCode;
+		    for (var i = 0; i < keysDown.length; i++) {
+		      if (key == keysDown[i]) keysDown.splice(i, 1);
+		    }
+		});
+
+		init();
+	}
+}
+
+function startTilt() {
+	canvas.removeEventListener('click', startTilt);
+	if (ios) {
+		canvas.removeEventListener('touchstart', startTilt);
+	}
+
+	tilt = true;
+	window.addEventListener('deviceorientation', handleOrientation, true);
+	canvas.addEventListener('click', function() {
+		if (keysDown.indexOf(13) == -1) keysDown.push(13);
+	});
+	if (ios) {
+		canvas.addEventListener('touchstart', function() {
+			if (keysDown.indexOf(13) == -1) keysDown.push(13);
+		});
+	}
+	init();
+
+	function handleOrientation(event) {
+	  console.log('hi');
+	  var absolute = event.absolute;
+	  var alpha    = event.alpha;
+	  var beta     = event.beta - 40;
+	  var gamma    = event.gamma;
+
+	  if (beta > 0) {
+	  	keysDown.push(83);
+	  	betaMod = beta / 900;
+	  	for (var i = 0; i < keysDown.length; i++) {
+	      if (87 == keysDown[i]) keysDown.splice(i, 1);
+	    }
+	  }
+	  if (beta < 0) {
+	  	keysDown.push(87);
+	  	betaMod = -beta / 900;
+	  	for (var i = 0; i < keysDown.length; i++) {
+	      if (83 == keysDown[i]) keysDown.splice(i, 1);
+	    }
+	  }
+	  if (gamma > 0) {
+	  	keysDown.push(68);
+	  	gammaMod = gamma / 900;
+	  	for (var i = 0; i < keysDown.length; i++) {
+	      if (65 == keysDown[i]) keysDown.splice(i, 1);
+	    }
+	  }
+	  if (gamma < 0) {
+	  	keysDown.push(65);
+	  	gammaMod = -gamma / 900;
+	  	for (var i = 0; i < keysDown.length; i++) {
+	      if (68 == keysDown[i]) keysDown.splice(i, 1);
+	    }
+	  }
+
+	  if (window.innerWidth > window.innerHeight) {
+	  	paused = true;
+	  } else {
+	  	paused = false;
+	  }
+	}
+}
+
+function init() {
+	rocks = [];
+	hero = {};
+	charge = {};
+	paused = false;
+	exploding = false;
+	gameOver = false;
+	betaMod = gammaMod = 1;
+
+	// set up hero
+	hero.x = canvas.width / 2;
+	hero.y = canvas.height * .8;
+	hero.size = 5 * unit;
+	hero.color = 'white';
+	hero.speed = 6 * unit;
+	hero.points = 0;
+	hero.lives = 3;
+	hero.kamikaze = false;
+	hero.chargePercent = 0;
+	hero.charges = 0;
+	hero.canFire = true;
+	hero.fire = function() {
+		if (tilt) {
+			for (var i = 0; i < keysDown.length; i++) {
+		      if (keysDown[i] == 13) keysDown.splice(i, 1);
+		    }
+		}
+		if (hero.charges > 0 || hero.kamikaze) {
+			if (vibrate) window.navigator.vibrate([100, 50, 100, 50, 100]);
+			hero.canFire = false;
+			if (!hero.kamikaze) hero.charges--;
+			for (var i = 0; i < rocks.length; i++) {
+				rocks[i].speed = 0;
+			}
+			hero.speed = 0;
+			explosionRadius = 1;
+			var explosionInterval = window.setInterval(function() {
+				if (explosionRadius <= 100) {
+					exploding = true;
+					paused = true;
+			        explosionRadius++;
+			    } else {
+					for (var i = 0; i < rocks.length; i++) {
+						var rock = rocks[i];
+						rock.regenerate()
+						hero.points += 10;
+			    		if (hero.points <= 20000 && hero.points % 1000 == 0) {
+			    			rocks.push(new Rock(
+								Math.floor(Math.random() * canvas.width),
+								Math.floor(Math.random() * -canvas.height - (canvas.height * 2)),
+								Math.floor(Math.random() * (5 * unit) + (2 * unit)),
+								Math.floor(Math.random() * (3 * unit) + (1 * unit))
+							));
+			    		}
+			    		if (hero.points % 10000 == 0) {
+			    			hero.lives++;
+			    		}
+					}
+					for (var i = 0; i < 50; i++) {
+						hero.points += 10;
+			    		if (hero.points % 1000 == 0) {
+			    			rocks.push(new Rock(
+								Math.floor(Math.random() * canvas.width),
+								Math.floor(Math.random() * -canvas.height - (canvas.height * 2)),
+								Math.floor(Math.random() * (5 * unit) + (2 * unit)),
+								Math.floor(Math.random() * (3 * unit) + (1 * unit))
+							));
+			    		}
+			    		if (hero.points % 10000 == 0) {
+			    			hero.lives++;
+			    		}
+					}
+					paused = false;
+					exploding = false;
+					if (hero.kamikaze && hero.lives < 1) endGame();
+					if (hero.kamikaze && hero.lives > 0) {
+						hero.x = canvas.width / 2;
+						hero.y = canvas.height * .8;
+						hero.kamikaze = false;
+					}
+					for (var i = 0; i < keysDown.length; i++) {
+						if (keysDown[i] == 13) keysDown.splice(i, 1);
+					}
+					hero.canFire = true;
+					hero.speed = 6 * unit;
+					window.clearInterval(explosionInterval);
+				}
+			}, 15);
+		}
+	}
+
+	// set up rocks
+	for (var i = 0; i < 30; i++) {
+		rocks[i] = new Rock(
+			Math.floor(Math.random() * canvas.width),
+			Math.floor(Math.random() * -canvas.height - (canvas.height * 2)),
+			Math.floor(Math.random() * (5 * unit) + (2 * unit)),
+			Math.floor(Math.random() * (3 * unit) + (1 * unit))
+		);
+	}
+
+	// set up charge
+	charge.x = Math.floor(Math.random() * canvas.width),
+	charge.y = Math.floor(Math.random() * -canvas.height);
+	charge.size = Math.floor(Math.random() * (4 * unit) + (3 * unit)),
+	charge.speed = Math.floor(Math.random() * (4 * unit) + (2 * unit)),
+
+	// start game
+	window.requestAnimationFrame(main);
+}
+
+// Main game loop
+function main() {
+	var now = Date.now();		//
+	var change = now - then;	// keeps things timed correctly
+	var mod = change / 100;		//
+
+	if (!paused && !gameOver) {
+		update(mod);
+	}
+	render();
+	
+	then = now;
+	window.requestAnimationFrame(main);
+}
+
+function update(mod) {
+	if (isNaN(mod)) mod = .1;
+
+	// move hero
+	for (var i = 0; i < keysDown.length; i++) {
+      switch (keysDown[i]) {
+        case 65:
+          hero.x -= hero.speed * mod * gammaMod;
+          break;
+        case 68:
+          hero.x += hero.speed * mod * gammaMod;
+          break;
+        case 87:
+          hero.y -= hero.speed * mod * betaMod;
+          break;
+        case 83:
+          hero.y += hero.speed * mod * betaMod;
+          break;
+        case 32:
+          paused = true;
+          return;
+          break;
+        case 13:
+          if (hero.canFire) hero.fire();
+          break;
+      }
+    }
+
+    // check for hero out of bounds
+    if (hero.y <= 0) {
+    	hero.y = 0;
+    }
+    if (hero.y + hero.size >= canvas.height) {
+    	hero.y = canvas.height - hero.size;
+    }
+    if (hero.x <= 0) {
+    	hero.x = 0;
+    }
+    if (hero.x + hero.size >= canvas.width) {
+    	hero.x = canvas.width - hero.size;
+    }
+
+    // move rocks
+    for (var i = 0; i < rocks.length; i++) {
+    	var rock = rocks[i];
+    	rock.y += rock.speed * mod;
+    	if (rock.y > canvas.height) {
+    		rock.y = Math.floor(Math.random() * -1500);
+    		hero.points += 10;
+    		if (hero.points <= 20000 && hero.points % 1000 == 0) {
+    			rocks.push(new Rock(
+					Math.floor(Math.random() * canvas.width),
+					Math.floor(Math.random() * -canvas.height - (canvas.height * 2)),
+					Math.floor(Math.random() * (5 * unit) + (2 * unit)),
+					Math.floor(Math.random() * (3 * unit) + (1 * unit))
+				));
+    		}
+    		if (hero.points % 10000 == 0) {
+    			hero.lives++;
+    		}
+    	}
+
+    	// detect rock collision
+    	if (detectCollision(hero, rock)) {
+    		rock.regenerate();
+    		hero.lives--;
+    		hero.kamikaze = true;
+    		hero.fire();
+    	}
+    }
+
+    // move charge
+    charge.y += charge.speed * mod;
+    if (charge.y > canvas.height) {
+    	charge.x = Math.floor(Math.random() * canvas.width),
+    	charge.y = Math.floor(Math.random() * -canvas.height);
+    	charge.size = Math.floor(Math.random() * (4 * unit) + (3 * unit));
+		charge.speed = Math.floor(Math.random() * (4 * unit) + (2 * unit));
+    }
+
+    // detect charge collision
+	if (detectCollision(hero, charge)) {
+		if (vibrate) window.navigator.vibrate(charge.size * 7);
+		var chargeUnitSize = Math.floor(charge.size / unit);
+		hero.chargePercent += chargeUnitSize * 2;
+		if (hero.chargePercent >= 100) {
+			hero.chargePercent -= 100;
+			hero.charges++;
+		}
+		charge.x = Math.floor(Math.random() * canvas.width),
+    	charge.y = Math.floor(Math.random() * -canvas.height - 10 * unit);
+    	charge.size = Math.floor(Math.random() * (4 * unit) + (3 * unit));
+		charge.speed = Math.floor(Math.random() * (4 * unit) + (2 * unit));
+		for (var i = 0; i < chargeUnitSize; i++) {
+			hero.points += 10;
+			if (hero.points <= 20000 && hero.points % 1000 == 0) {
+				rocks.push(new Rock(
+					Math.floor(Math.random() * canvas.width),
+					Math.floor(Math.random() * -canvas.height - (canvas.height * 2)),
+					Math.floor(Math.random() * (5 * unit) + (2 * unit)),
+					Math.floor(Math.random() * (3 * unit) + (1 * unit))
+				));
+			}
+			if (hero.points % 10000 == 0) {
+				hero.lives++;
+			}
+		}
+	}
+}
+
+function render() {
+	// background
+	ctx.fillStyle = bgColor;
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+	if (!gameOver) {
+
+		// hero
+		ctx.fillStyle = hero.color;
+		ctx.fillRect(hero.x, hero.y, hero.size, hero.size);
+
+		// rocks
+		ctx.fillStyle = rockColor;
+		for (var i = 0; i < rocks.length; i++) {
+			var rock = rocks[i];
+			ctx.fillRect(rock.x, rock.y, rock.size, rock.size);
+		}
+
+		// charge
+		ctx.fillStyle = chargeColor;
+		ctx.fillRect(charge.x, charge.y, charge.size, charge.size);
+
+		// explosion
+		if (exploding) {
+			ctx.beginPath();
+			ctx.arc(hero.x, hero.y, explosionRadius * unit, 0, 2 * Math.PI, false);
+			ctx.fillStyle = chargeColor;
+			ctx.fill();
+		}
+
+		// info
+		ctx.fillStyle = heroColor;
+	  	ctx.fillRect(0, unit, (hero.points % 10000) / 10000 * unit * 100, hero.size / 4);
+	  	var lifeCount = 1;
+	  	for (var i = 0; i < hero.lives - 1; i++) {
+	  		ctx.fillRect(canvas.width - unit - (hero.size + 2 * unit) * lifeCount, canvas.height - hero.size - unit, hero.size, hero.size);
+	  		lifeCount++;
+	  	}
+	  	if (paused && !exploding) ctx.fillText('paused', canvas.width - 80, 20);
+	  	ctx.fillStyle = chargeColor;
+	  	var chargeCount = 0;
+	  	for (var i = 0; i < hero.charges + 1; i++) {
+	  		if (i < hero.charges) {
+	  			ctx.fillRect(unit * 2 + (hero.size + 2 * unit) * chargeCount, canvas.height - hero.size - unit, hero.size, hero.size);
+	  		} else {
+	  			ctx.fillRect(unit * 2 + (hero.size + 2 * unit) * chargeCount, canvas.height - hero.size - unit, hero.size, hero.size * hero.chargePercent / 100);
+	  		}
+	  		chargeCount++;
+	  	}
+
+	} else {
+		ctx.fillStyle = rockColor;
+		ctx.fillRect(32 * unit, 15 * unit, 20 * unit, 20 * unit);
+		ctx.fillStyle = chargeColor;
+		ctx.fillRect(47 * unit, 20 * unit, 17 * unit, 17 * unit);
+		ctx.fillStyle = heroColor;
+		ctx.fillRect(42 * unit, 32 * unit, 14 * unit, 14 * unit);
+		ctx.fillStyle = heroColor;
+		ctx.fillText('score: ' + hero.points, 10 * unit, 60 * unit);
+		ctx.fillText('hiscore: ' + highScore, 10 * unit, 70 * unit);
+		ctx.fillText('click anywhere to play again', 10 * unit, 90 * unit);
+	}
+}
+
+function detectCollision(obj1, obj2) {
+	if (
+		obj1.x < obj2.x + obj2.size &&
+		obj1.x + obj1.size > obj2.x &&
+		obj1.y < obj2.y + obj2.size &&
+		obj1.y + obj1.size > obj2.y
+	) { return true; }
+	return false;
+}
+
+function endGame() {
+	gameOver = true;
+	paused = true;
+
+	if (localStorage.getItem('highScore')) {
+		highScore = localStorage.getItem('highScore');
+		if (hero.points > highScore) {
+			localStorage.setItem('highScore', hero.points);
+			highScore = hero.points;
+		}
+	} else {
+		highScore = hero.points;
+		localStorage.setItem('highScore', hero.points)
+	}
+
+	canvas.addEventListener('click', restart);
+	if (ios) {
+		canvas.addEventListener('touchstart', restart);
+	}
+}
+
+function restart() {
+	init()
+	canvas.removeEventListener('click', restart);
+	if (ios) {
+		canvas.removeEventListener('touchstart', restart);
+	}
+}
+
+	</script>
+</body>
+</html>
